@@ -24,30 +24,57 @@
 // IN THE SOFTWARE.
 // ----------------------------------------------------------------------------
 
-#pragma once
+#include "open3d/core/kernel/ParallelFor.h"
 
-#ifdef _OPENMP
-#include <omp.h>
-#endif
+#include <cstdint>
+#include <functional>
+#include <thread>
+
+#include "open3d/core/kernel/ParallelUtil.h"
+#include "open3d/utility/Console.h"
 
 namespace open3d {
 namespace core {
 namespace kernel {
 
-inline int GetMaxThreads() {
-#ifdef _OPENMP
-    return omp_get_max_threads();
-#else
-    return 1;
-#endif
+// Value taken from PyTorch's at::internal::GRAIN_SIZE. The value is chosen
+// heuristically.
+static constexpr int64_t DEFAULT_MIN_PARALLEL_SIZE = 32768;
+
+void ParallelFor(int64_t num_jobs, const std::function<void(int64_t)>& f) {
+    ParallelFor(0, num_jobs, DEFAULT_MIN_PARALLEL_SIZE, f);
 }
 
-inline bool InParallel() {
-#ifdef _OPENMP
-    return omp_in_parallel();
-#else
-    return false;
-#endif
+void ParallelFor(int64_t start,
+                 int64_t end,
+                 const std::function<void(int64_t)>& f) {
+    ParallelFor(start, end, DEFAULT_MIN_PARALLEL_SIZE, f);
+}
+
+void ParallelFor(int64_t start,
+                 int64_t end,
+                 int64_t min_parallel_size,
+                 const std::function<void(int64_t)>& f) {
+    // unsigned int num_cpu = std::thread::hardware_concurrency();
+    // utility::LogInfo("num_cpu = {}.", num_cpu);
+
+    if (min_parallel_size <= 0) {
+        utility::LogError("min_parallel_size must be > 0, but got {}.",
+                          min_parallel_size);
+    }
+
+    // It's also possible to use `#pragma omp parallel for if (xxx)`.
+    if (end - start <= min_parallel_size || GetMaxThreads() == 1 ||
+        InParallel()) {
+        for (int64_t i = start; i < end; i++) {
+            f(i);
+        }
+    } else {
+#pragma omp parallel for
+        for (int64_t i = start; i < end; i++) {
+            f(i);
+        }
+    }
 }
 
 }  // namespace kernel

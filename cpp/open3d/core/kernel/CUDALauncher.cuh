@@ -136,7 +136,7 @@ public:
     /// Do not assert host_device compatible, because there can be some GPU-only
     /// operations (e.g., atomicAdd, __shfl_sync).
     template <typename func_t>
-    static void LaunchGeneralKernel(int64_t n, func_t element_kernel) {
+    static void LaunchGeneralKernel(int64_t n, const func_t& element_kernel) {
         if (n == 0) {
             return;
         }

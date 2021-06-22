@@ -31,6 +31,7 @@
 #include "open3d/core/AdvancedIndexing.h"
 #include "open3d/core/Indexer.h"
 #include "open3d/core/Tensor.h"
+#include "open3d/core/kernel/ParallelFor.h"
 #include "open3d/core/kernel/ParallelUtil.h"
 #include "open3d/utility/Logging.h"
 
@@ -50,45 +51,37 @@ public:
     template <typename func_t>
     static void LaunchIndexFillKernel(const Indexer& indexer,
                                       func_t element_kernel) {
-#pragma omp parallel for schedule(static)
-        for (int64_t workload_idx = 0; workload_idx < indexer.NumWorkloads();
-             ++workload_idx) {
+        ParallelFor(indexer.NumWorkloads(), [&](int64_t workload_idx) {
             element_kernel(indexer.GetInputPtr(0, workload_idx), workload_idx);
-        }
+        });
     }
 
     template <typename func_t>
     static void LaunchUnaryEWKernel(const Indexer& indexer,
                                     func_t element_kernel) {
-#pragma omp parallel for schedule(static)
-        for (int64_t workload_idx = 0; workload_idx < indexer.NumWorkloads();
-             ++workload_idx) {
+        ParallelFor(indexer.NumWorkloads(), [&](int64_t workload_idx) {
             element_kernel(indexer.GetInputPtr(0, workload_idx),
                            indexer.GetOutputPtr(workload_idx));
-        }
+        });
     }
 
     template <typename func_t>
     static void LaunchBinaryEWKernel(const Indexer& indexer,
                                      func_t element_kernel) {
-#pragma omp parallel for schedule(static)
-        for (int64_t workload_idx = 0; workload_idx < indexer.NumWorkloads();
-             ++workload_idx) {
+        ParallelFor(indexer.NumWorkloads(), [&](int64_t workload_idx) {
             element_kernel(indexer.GetInputPtr(0, workload_idx),
                            indexer.GetInputPtr(1, workload_idx),
                            indexer.GetOutputPtr(workload_idx));
-        }
+        });
     }
 
     template <typename func_t>
     static void LaunchAdvancedIndexerKernel(const AdvancedIndexer& indexer,
                                             func_t element_kernel) {
-#pragma omp parallel for schedule(static)
-        for (int64_t workload_idx = 0; workload_idx < indexer.NumWorkloads();
-             ++workload_idx) {
+        ParallelFor(indexer.NumWorkloads(), [&](int64_t workload_idx) {
             element_kernel(indexer.GetInputPtr(workload_idx),
                            indexer.GetOutputPtr(workload_idx));
-        }
+        });
     }
 
     template <typename scalar_t, typename func_t>
@@ -118,8 +111,7 @@ public:
                 (num_workloads + num_threads - 1) / num_threads;
         std::vector<scalar_t> thread_results(num_threads, identity);
 
-#pragma omp parallel for schedule(static)
-        for (int64_t thread_idx = 0; thread_idx < num_threads; ++thread_idx) {
+        ParallelFor(num_threads, [&](int64_t thread_idx) {
             int64_t start = thread_idx * workload_per_thread;
             int64_t end = std::min(start + workload_per_thread, num_workloads);
             for (int64_t workload_idx = start; workload_idx < end;
@@ -127,7 +119,8 @@ public:
                 element_kernel(indexer.GetInputPtr(0, workload_idx),
                                &thread_results[thread_idx]);
             }
-        }
+        });
+
         void* output_ptr = indexer.GetOutputPtr(0);
         for (int64_t thread_idx = 0; thread_idx < num_threads; ++thread_idx) {
             element_kernel(&thread_results[thread_idx], output_ptr);
@@ -172,7 +165,7 @@ public:
 
     /// General kernels with non-conventional indexers
     template <typename func_t>
-    static void LaunchGeneralKernel(int64_t n, func_t element_kernel) {
+    static void LaunchGeneralKernel(int64_t n, const func_t& element_kernel) {
 #pragma omp parallel for schedule(static)
         for (int64_t workload_idx = 0; workload_idx < n; ++workload_idx) {
             element_kernel(workload_idx);
